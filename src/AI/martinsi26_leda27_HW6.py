@@ -145,9 +145,15 @@ class AIPlayer(Player):
 
         # --- Queen HP ---
         myQueen = myInv.getQueen()
-        myQueenHP = myQueen.HP
+        myQueenHP = myQueen.health
         myQueenHPCat = self.binCalculation(myQueenHP, queenHPBin)
 
+        # --- Threats ---
+        queenThreatCat = self.binCalculation(_, threatBin)
+
+        # --- Path ---
+
+        # --- Nearest Food Distance ---
         
 
 
