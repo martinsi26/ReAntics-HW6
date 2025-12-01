@@ -595,7 +595,6 @@ def getCurrPlayerFood(self, currentState):
     return myFood
 
 
-
 ##
 # Return: a reference to my enemy's inventory
 def getEnemyInv(self, currentState):
