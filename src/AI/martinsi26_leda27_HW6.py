@@ -57,12 +57,13 @@ class AIPlayer(Player):
                 self.utilityTable = pickle.load(f)
             print("Loaded utility table from file")
 
+
     def saveLearning(self, filename="utility_table.pkl"):
         with open(filename, "wb") as f:
             pickle.dump(self.utilityTable, f)
         print(f"Utility table saved to {filename}")
-
     
+
     ##
     #getPlacement 
     #
@@ -70,44 +71,42 @@ class AIPlayer(Player):
     # protection to the queen.  Enemy food is placed randomly.
     #
     def getPlacement(self, currentState):
-        numToPlace = 0
-        #implemented by students to return their next move
-        if currentState.phase == SETUP_PHASE_1:    #stuff on my side
-            numToPlace = 11
-            moves = []
-            for i in range(0, numToPlace):
-                move = None
-                while move == None:
-                    #Choose any x location
-                    x = random.randint(0, 9)
-                    #Choose any y location on your side of the board
-                    y = random.randint(0, 3)
-                    #Set the move if this space is empty
-                    if currentState.board[x][y].constr == None and (x, y) not in moves:
-                        move = (x, y)
-                        #Just need to make the space non-empty. So I threw whatever I felt like in there.
-                        currentState.board[x][y].constr == True
-                moves.append(move)
-            return moves
-        elif currentState.phase == SETUP_PHASE_2:   #stuff on foe's side
-            numToPlace = 2
-            moves = []
-            for i in range(0, numToPlace):
-                move = None
-                while move == None:
-                    #Choose any x location
-                    x = random.randint(0, 9)
-                    #Choose any y location on enemy side of the board
-                    y = random.randint(6, 9)
-                    #Set the move if this space is empty
-                    if currentState.board[x][y].constr == None and (x, y) not in moves:
-                        move = (x, y)
-                        #Just need to make the space non-empty. So I threw whatever I felt like in there.
-                        currentState.board[x][y].constr == True
-                moves.append(move)
-            return moves
-        else:
-            return [(0, 0)]
+        #Just put in my previous method for starting the game, can change to better strategy
+        self.myFood = None
+        self.myTunnel = None
+
+        if currentState.phase == SETUP_PHASE_1:
+            return [
+                (1, 1), (8, 1),  # Anthill and hive
+                #Make a Grass wall
+                (0, 3), (1, 3), (2, 3), (3, 3),  #Grass 
+                (4, 3), (5, 3), (6, 3), #Grass
+                (8, 3), (9, 3) # Grass
+            ]
+        #Placing the enemies food (In the corners/randomly far away from their anthill)
+        elif currentState.phase == SETUP_PHASE_2:
+            #The places the method will choose and append to return
+            foodSpots = []
+            #Corner coordinates
+            corners = [(0, 9), (0, 6), (9, 6), (9, 9)]
+
+            #Go through corners, make sure its legal and add to the return list
+            for coord in corners:
+                if legalCoord(coord) and getConstrAt(currentState, coord) is None:
+                    foodSpots.append(coord)
+                #If you have both spots, break and go to return
+                if len(foodSpots) == 2:
+                    break
+            #If one or more of the corners are covered pick a random spot
+            while len(foodSpots) < 2:
+                coord = (random.randint(0, 9), random.randint(6, 9))
+                if legalCoord(coord) and getConstrAt(currentState, coord) is None and coord not in foodSpots:
+                    foodSpots.append(coord)
+
+            #Return final list of enemy food placement
+            return foodSpots
+
+        return None
     
     ##
     #getMove
@@ -148,6 +147,7 @@ class AIPlayer(Player):
 
         # --- GLIE: epsilon-greedy action selection ---
         legalMoves = listAllLegalMoves(currentState)
+        legalMoves = self.filterLegalMoves(currentState, legalMoves)  # <-- filter workers
         takeRandom = random.random() < self.epsilon
 
         if takeRandom:
@@ -167,7 +167,37 @@ class AIPlayer(Player):
         # Decay epsilon (GLIE)
         self.epsilon = max(self.epsilonMin, self.epsilon * self.epsilonDecay)
 
-        return chosenMove    
+        return chosenMove
+    
+    # --- Hard cap for workers ---
+    MAX_WORKERS = 2 
+    # --- Hard cap for combat units ---
+    MAX_COMBAT_UNITS = 2
+
+    def filterLegalMoves(self, state, moves):
+        """
+        Remove build moves if max units are reached.
+        """
+        # Count current workers
+        myWorkers = getAntList(state, state.whoseTurn, (WORKER,))
+        # Count current combat units
+        myCombat = getAntList(state, state.whoseTurn, (SOLDIER, R_SOLDIER, DRONE))
+
+        filtered = []
+
+        for m in moves:
+            if hasattr(m, 'buildType'):
+                if m.buildType == WORKER and len(myWorkers) >= self.MAX_WORKERS:
+                    continue  # skip building extra workers
+                if m.buildType in (SOLDIER, R_SOLDIER, DRONE) and len(myCombat) >= self.MAX_COMBAT_UNITS:
+                    continue  # skip building extra combat units
+            filtered.append(m)
+
+        # If filtering removes everything, fallback to all moves
+        return filtered if filtered else moves
+
+
+
 
     def estimateMoveUtility(self, currentState, move):
         """
@@ -248,10 +278,11 @@ class AIPlayer(Player):
         workerBin = [0, 1, 2] # Worker count bins
         queenHPBin = [0.25, 0.5, 0.75, 1.01] # Queen HP bins (0–1 normalized)
         threatBin = [0, 2] # Threat bins (queen/hill)
-        foodDistBin = [0, 1, 2, 4, 6] # Nearest food distance bins
+        nearestFoodDistBin = [0, 1, 2, 4, 6] # Nearest food distance bins
+        nearestDropoffDistBin = [0, 1, 2, 4, 6] # Nearest drop off location distance bins
+        attackDistBin = [0, 1, 2, 3, 5, 7, 10]  # distance bins for attacking ants to enemy queen
         gameStageBins = [0.15, 0.35, 0.6, 0.85] # Stage of the game based on food count
 
-        
         myInv = getCurrPlayerInventory(state)
         enemyInv = getEnemyInv(self, state)
 
@@ -297,48 +328,38 @@ class AIPlayer(Player):
 
         for a in enemyAnts:
             if a.type in (SOLDIER, R_SOLDIER, DRONE):
-                if a.coords and myQueen.coords and stepsToReach(a.coords, myQueen.coords) <= 2:
+                if a.coords and myQueen.coords and stepsToReach(state, a.coords, myQueen.coords) <= 2:
                     queenThreat = 1
-                if a.coords and hill.coords and stepsToReach(a.coords, hill.coords) <= 2:
+                if a.coords and hill.coords and stepsToReach(state, a.coords, hill.coords) <= 2:
                     hillThreat = 1
 
         queenThreatCat = getBin(queenThreat, threatBin)
         hillThreatCat = getBin(hillThreat, threatBin)
 
-        # --- Nearest Food Distance ---
-        foodLocation = getConstrList(state, None, (FOOD,))
-        myWorkers = getAntList(state, state.whoseTurn, (WORKER,))
-
-        hill = myInv.getAnthill()
+        # --- Worker distances for food efficiency ---
+        foodLocations = getConstrList(state, None, (FOOD,))
         tunnel = myInv.getTunnels()
 
-        # Start distances very large
         bestDistToFood = 999
         bestDistToDropoff = 999
 
         for w in myWorkers:
             if not w.coords:
                 continue
-
             if not w.carrying:
-                # Worker going to food
-                for food in foodLocation:
+                # Worker going to nearest food
+                for food in foodLocations:
                     d = stepsToReach(state, w.coords, food.coords)
-                    if d < bestDistToFood:
-                        bestDistToFood = d
-
+                    bestDistToFood = min(bestDistToFood, d)
             else:
-                # Worker returning food → choose nearest drop-off
+                # Worker carrying food → nearest drop-off (anthill or tunnel)
                 dHill = stepsToReach(state, w.coords, hill.coords)
-                dTun  = stepsToReach(state, w.coords, tunnel[0].coords)
-                bestDistToDropoff = min(bestDistToDropoff, dHill, dTun)
+                dTunnel = stepsToReach(state, w.coords, tunnel[0].coords) if tunnel else 999
+                bestDistToDropoff = min(bestDistToDropoff, dHill, dTunnel)
 
-        # Choose best overall “food efficiency”
-        # Prefer workers carrying food (immediate scoring potential)
-        bestWorkerDist = min(bestDistToFood, bestDistToDropoff)
-
-        # Convert to category
-        foodDistCat = getBin(bestWorkerDist, foodDistBin)
+        # Ensure distances default to max if no workers
+        nearestFoodDistCat = getBin(bestDistToFood, nearestFoodDistBin)
+        nearestDropoffDistCat = getBin(bestDistToDropoff, nearestDropoffDistBin)
 
         # ---------- GAME STAGE ----------
         myProgress = myInv.foodCount / 11.0
@@ -346,6 +367,25 @@ class AIPlayer(Player):
         
         gameProgress = max(myProgress, enemyProgress)
         gameStageCat = getBin(gameProgress, gameStageBins)
+
+        # --- Attack distance to enemy queen ---
+        # --- Attack distance to enemy queen ---
+        enemyQueen = enemyInv.getQueen()
+        attackingAnts = getAntList(state, state.whoseTurn, (SOLDIER, R_SOLDIER, DRONE))
+
+        minAttackDist = 999  # large number initially
+        if enemyQueen is not None and enemyQueen.coords is not None:
+            for a in attackingAnts:
+                if a.coords:
+                    d = stepsToReach(state, a.coords, enemyQueen.coords)
+                    if d < minAttackDist:
+                        minAttackDist = d
+        else:
+            # No enemy queen → keep minAttackDist high
+            minAttackDist = 999
+
+        # Bin the distance
+        attackDistCat = getBin(minAttackDist, attackDistBin)
 
         # --- Return tuple ---
         category = (
@@ -357,7 +397,9 @@ class AIPlayer(Player):
             myQueenHPCat,
             queenThreatCat,
             hillThreatCat,
-            foodDistCat,
+            nearestFoodDistCat,
+            nearestDropoffDistCat,
+            attackDistCat,
             gameStageCat,
         )
 
