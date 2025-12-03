@@ -38,11 +38,11 @@ class AIPlayer(Player):
         self.myTunnel = None
         
         # TD Learning parameters
-        self.alpha = 0.1  # Learning rate
+        self.alpha = 0.15  # Learning rate
         self.gamma = 0.9  # Discount factor
         self.lambda_trace = 0.7  # Eligibility trace decay
-        self.epsilon = 0.1  # Exploration rate
-        self.epsilon_min = 0.01
+        self.epsilon = 0.3  # Exploration rate
+        self.epsilon_min = 0.05  # Minimum exploration
         self.epsilon_decay = 0.9995
         
         # State utilities mapping state categories to utility values
@@ -55,6 +55,10 @@ class AIPlayer(Player):
         # Statistics
         self.gamesPlayed = 0
         self.stateVisitCounts = {}  # Track how often each state is visited
+        
+        # Ant caps to prevent over-building and ensure games complete
+        self.max_workers = 3
+        self.max_soldiers = 3
         
         # Load saved utilities if they exist
         self.loadUtilities()
@@ -123,6 +127,9 @@ class AIPlayer(Player):
         # Get all legal moves
         legalMoves = listAllLegalMoves(currentState)
         
+        # Filter out BUILD moves that would exceed ant caps
+        legalMoves = self.filterBuildMoves(currentState, legalMoves)
+        
         if len(legalMoves) == 0:
             return Move(END, None, None)
         
@@ -160,6 +167,42 @@ class AIPlayer(Player):
             return random.choice(legalMoves)
         
         return bestMove
+    
+    ##
+    #filterBuildMoves
+    #
+    # Filters out BUILD moves that would exceed ant caps
+    #
+    def filterBuildMoves(self, currentState, legalMoves):
+        myInv = getCurrPlayerInventory(currentState)
+        
+        # Count current ants
+        workers = getAntList(currentState, currentState.whoseTurn, (WORKER,))
+        soldiers = getAntList(currentState, currentState.whoseTurn, (SOLDIER, R_SOLDIER))
+        numWorkers = len(workers)
+        numSoldiers = len(soldiers)
+        
+        # Filter moves
+        filteredMoves = []
+        for move in legalMoves:
+            if move.moveType == BUILD:
+                # Check if this build would exceed caps
+                if move.buildType == WORKER:
+                    if numWorkers < self.max_workers:
+                        filteredMoves.append(move)
+                    # else: skip this move (would exceed worker cap)
+                elif move.buildType in (SOLDIER, R_SOLDIER):
+                    if numSoldiers < self.max_soldiers:
+                        filteredMoves.append(move)
+                    # else: skip this move (would exceed soldier cap)
+                else:
+                    # Allow DRONE builds (no cap on drones for now)
+                    filteredMoves.append(move)
+            else:
+                # Keep all non-BUILD moves
+                filteredMoves.append(move)
+        
+        return filteredMoves
     
     ##
     #getAttack
@@ -258,8 +301,8 @@ class AIPlayer(Player):
                 oldUtility = self.getStateUtility(state)
                 self.stateUtilities[state] = oldUtility + update
                 
-                # Decay eligibility trace
-                self.eligibilityTraces[state] *= self.gamma * self.lambda_trace
+                # Decay eligibility trace (fixed: should only use lambda_trace, not gamma * lambda_trace)
+                self.eligibilityTraces[state] *= self.lambda_trace
     
     ##
     #getStateUtility
