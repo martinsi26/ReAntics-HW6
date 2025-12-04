@@ -31,6 +31,9 @@ class AIPlayer(Player):
     ##
     def __init__(self, inputPlayerId):
         super(AIPlayer,self).__init__(inputPlayerId, "HW6")
+
+        self.train = False
+        
         # Dictionary to store how many times each category was visited
         # Key = category tuple, Value = visit count (int)
         self.categoryVisits = {}
@@ -230,7 +233,8 @@ class AIPlayer(Player):
     #
     def registerWin(self, hasWon):
         self.prevState = None
-        self.saveLearning()  # saves utilityTable to file
+        if self.train:
+            self.saveLearning()  # saves utilityTable to file
 
     def reward(self, state):
         me = state.whoseTurn
