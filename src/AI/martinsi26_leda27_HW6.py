@@ -328,9 +328,9 @@ class AIPlayer(Player):
 
         for a in enemyAnts:
             if a.type in (SOLDIER, R_SOLDIER, DRONE):
-                if a.coords and myQueen.coords and stepsToReach(state, a.coords, myQueen.coords) <= 2:
+                if a.coords and myQueen.coords and approxDist(a.coords, myQueen.coords) <= 2:
                     queenThreat = 1
-                if a.coords and hill.coords and stepsToReach(state, a.coords, hill.coords) <= 2:
+                if a.coords and hill.coords and approxDist(a.coords, hill.coords) <= 2:
                     hillThreat = 1
 
         queenThreatCat = getBin(queenThreat, threatBin)
@@ -349,12 +349,12 @@ class AIPlayer(Player):
             if not w.carrying:
                 # Worker going to nearest food
                 for food in foodLocations:
-                    d = stepsToReach(state, w.coords, food.coords)
+                    d = approxDist(w.coords, food.coords)
                     bestDistToFood = min(bestDistToFood, d)
             else:
                 # Worker carrying food → nearest drop-off (anthill or tunnel)
-                dHill = stepsToReach(state, w.coords, hill.coords)
-                dTunnel = stepsToReach(state, w.coords, tunnel[0].coords) if tunnel else 999
+                dHill = approxDist(w.coords, hill.coords)
+                dTunnel = approxDist(w.coords, tunnel[0].coords) if tunnel else 999
                 bestDistToDropoff = min(bestDistToDropoff, dHill, dTunnel)
 
         # Ensure distances default to max if no workers
@@ -377,7 +377,7 @@ class AIPlayer(Player):
         if enemyQueen is not None and enemyQueen.coords is not None:
             for a in attackingAnts:
                 if a.coords:
-                    d = stepsToReach(state, a.coords, enemyQueen.coords)
+                    d = approxDist(a.coords, enemyQueen.coords)
                     if d < minAttackDist:
                         minAttackDist = d
         else:
